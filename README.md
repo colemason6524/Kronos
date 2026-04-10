@@ -213,6 +213,41 @@ Running this script will generate a plot comparing the ground truth data against
 
 Additionally, we provide a script that makes predictions without Volume and Amount data, which can be found in [`examples/prediction_wo_vol_example.py`](examples/prediction_wo_vol_example.py).
 
+### 📄 Text Report Workflow
+
+If you prefer a plain-text summary instead of charts, you can use [`scripts/kronos_text_report.py`](scripts/kronos_text_report.py) to turn a forecast into a manual decision-support report.
+
+You can prepare a Kronos-ready BTC/USDT starter file from Binance's public archive with [`scripts/fetch_binance_vision_klines.py`](scripts/fetch_binance_vision_klines.py):
+
+```shell
+python scripts/fetch_binance_vision_klines.py \
+  --symbol BTCUSDT \
+  --interval 1h \
+  --start-date 2026-03-01 \
+  --end-date 2026-04-10
+```
+
+Run a fresh forecast from a market CSV:
+
+```shell
+python scripts/kronos_text_report.py \
+  --csv /path/to/btc_usdt_1h.csv \
+  --instrument BTC/USDT \
+  --timeframe 1h \
+  --lookback 400 \
+  --pred-len 24 \
+  --sample-count 3
+```
+
+Or summarize a saved Web UI prediction JSON:
+
+```shell
+python scripts/kronos_text_report.py \
+  --prediction-json webui/prediction_results/prediction_20250826_181932.json \
+  --instrument BTC/USDT \
+  --timeframe 1h
+```
+
 
 ## 🔧 Finetuning on Your Own Data (A-Share Market Example)
 
