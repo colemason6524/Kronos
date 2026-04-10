@@ -57,6 +57,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lookback", type=int, default=400, help="Number of historical candles to use.")
     parser.add_argument("--pred-len", type=int, default=24, help="Number of candles to forecast.")
     parser.add_argument("--start-date", help="Optional start date for an in-sample comparison window.")
+    parser.add_argument(
+        "--live",
+        action="store_true",
+        help="Forecast beyond the end of the CSV instead of using the last pred_len rows as holdout actuals.",
+    )
     parser.add_argument("--model-id", default=DEFAULT_MODEL, help="Hugging Face model id or local path.")
     parser.add_argument("--tokenizer-id", default=DEFAULT_TOKENIZER, help="Hugging Face tokenizer id or local path.")
     parser.add_argument("--device", default=None, help="Device override, e.g. cpu, cuda:0, mps.")
@@ -139,7 +144,13 @@ def load_models(model_id: str, tokenizer_id: str, device: Optional[str]) -> Kron
     return KronosPredictor(model, tokenizer, device=device, max_context=512)
 
 
-def select_window(df: pd.DataFrame, lookback: int, pred_len: int, start_date: Optional[str]) -> tuple[pd.DataFrame, pd.Series, pd.Series, Optional[pd.DataFrame]]:
+def select_window(
+    df: pd.DataFrame,
+    lookback: int,
+    pred_len: int,
+    start_date: Optional[str],
+    live: bool,
+) -> tuple[pd.DataFrame, pd.Series, pd.Series, Optional[pd.DataFrame]]:
     if start_date:
         start_ts = pd.to_datetime(start_date)
         window_df = df[df["timestamps"] >= start_ts].reset_index(drop=True)
@@ -151,6 +162,14 @@ def select_window(df: pd.DataFrame, lookback: int, pred_len: int, start_date: Op
         actual_df = window_df.iloc[lookback:lookback + pred_len].copy()
         y_timestamp = actual_df["timestamps"].reset_index(drop=True)
         return context_df, context_df["timestamps"].reset_index(drop=True), y_timestamp, actual_df
+
+    if live:
+        if len(df) < lookback:
+            raise ValueError(f"Need at least {lookback} rows, found {len(df)}.")
+
+        context_df = df.iloc[-lookback:].copy()
+        y_timestamp = future_timestamps(context_df["timestamps"].reset_index(drop=True), pred_len)
+        return context_df, context_df["timestamps"].reset_index(drop=True), y_timestamp, None
 
     if len(df) >= lookback + pred_len:
         context_df = df.iloc[-(lookback + pred_len):-pred_len].copy()
@@ -169,7 +188,13 @@ def select_window(df: pd.DataFrame, lookback: int, pred_len: int, start_date: Op
 def bundle_from_csv(args: argparse.Namespace) -> ForecastBundle:
     df = load_market_csv(args.csv)
     timeframe = args.timeframe or infer_timeframe(df)
-    context_df, x_timestamp, y_timestamp, actual_df = select_window(df, args.lookback, args.pred_len, args.start_date)
+    context_df, x_timestamp, y_timestamp, actual_df = select_window(
+        df,
+        args.lookback,
+        args.pred_len,
+        args.start_date,
+        args.live,
+    )
 
     feature_cols = ["open", "high", "low", "close"]
     if "volume" in context_df.columns:

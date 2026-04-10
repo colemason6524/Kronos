@@ -234,10 +234,13 @@ python scripts/kronos_text_report.py \
   --csv /path/to/btc_usdt_1h.csv \
   --instrument BTC/USDT \
   --timeframe 1h \
+  --live \
   --lookback 400 \
   --pred-len 24 \
   --sample-count 3
 ```
+
+Use `--live` when you want the script to forecast beyond the end of your CSV. If you omit it and your file has at least `lookback + pred_len` rows, the script will use the last `pred_len` rows as holdout actuals for comparison.
 
 Or summarize a saved Web UI prediction JSON:
 
