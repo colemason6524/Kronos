@@ -242,6 +242,18 @@ python scripts/kronos_text_report.py \
 
 Use `--live` when you want the script to forecast beyond the end of your CSV. If you omit it and your file has at least `lookback + pred_len` rows, the script will use the last `pred_len` rows as holdout actuals for comparison.
 
+For a simpler day-to-day BTC workflow, use [`scripts/run_btc_morning_report.sh`](scripts/run_btc_morning_report.sh). It refreshes a stable `data/btcusdt_1h_latest.csv` file, runs a live report, and saves the output to `reports/`.
+
+```shell
+bash scripts/run_btc_morning_report.sh
+```
+
+You can override defaults inline if needed:
+
+```shell
+START_DATE=2026-01-01 LOOKBACK=512 PRED_LEN=24 SAMPLE_COUNT=5 bash scripts/run_btc_morning_report.sh
+```
+
 Or summarize a saved Web UI prediction JSON:
 
 ```shell
