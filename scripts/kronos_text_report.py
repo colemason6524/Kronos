@@ -15,6 +15,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 import numpy as np
@@ -68,6 +69,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Nucleus sampling probability.")
     parser.add_argument("--sample-count", type=int, default=3, help="Number of forecast samples to average.")
+    parser.add_argument("--save-json", help="Optional path to save a machine-readable report payload.")
     parser.add_argument("--verbose", action="store_true", help="Show Kronos autoregressive progress.")
     args = parser.parse_args()
 
@@ -424,7 +426,7 @@ def actual_outcome_section(bundle: ForecastBundle) -> list[str]:
     ]
 
 
-def format_report(bundle: ForecastBundle) -> str:
+def summarize_bundle(bundle: ForecastBundle) -> dict:
     current_close = float(bundle.context_df["close"].iloc[-1]) if not bundle.context_df.empty else float(bundle.pred_df["close"].iloc[0])
     final_close = float(bundle.pred_df["close"].iloc[-1])
     highest_high = float(bundle.pred_df["high"].max())
@@ -464,6 +466,71 @@ def format_report(bundle: ForecastBundle) -> str:
         invalidation = "not directional enough to define tightly"
         watch_for = "whether price resolves out of the predicted range cleanly"
         avoid_if = "you need strong directional conviction"
+
+    return {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "instrument": bundle.instrument,
+        "timeframe": bundle.timeframe or "unknown",
+        "lookback": bundle.lookback,
+        "pred_len": bundle.pred_len,
+        "sample_count": bundle.sample_count,
+        "temperature": bundle.temperature,
+        "top_p": bundle.top_p,
+        "context": {
+            "current_close": current_close,
+            "trend_impression": trend_impression,
+            "market_condition": market_condition,
+            "context_end_timestamp": None if bundle.context_df.empty else pd.Timestamp(bundle.context_df["timestamps"].iloc[-1]).isoformat(),
+        },
+        "forecast": {
+            "predicted_final_close": final_close,
+            "predicted_return_pct": final_return_pct,
+            "highest_predicted_high": highest_high,
+            "lowest_predicted_low": lowest_low,
+            "max_upside_pct": max_upside_pct,
+            "max_downside_pct": max_downside_pct,
+            "bias": bias,
+            "path_shape": path_shape,
+            "expected_pullback": pullback,
+            "expected_volatility": volatility,
+            "agreement": agreement,
+            "confidence_note": confidence,
+            "bull_case": bull_case,
+            "bear_case": bear_case,
+            "most_likely_zone": zone,
+            "invalidation_zone": invalidation,
+            "watch_for": watch_for,
+            "avoid_if": avoid_if,
+        },
+        "forecast_timestamps": [pd.Timestamp(ts).isoformat() for ts in bundle.pred_df["timestamps"]],
+        "forecast_rows": bundle.pred_df.to_dict(orient="records"),
+        "actual_rows": [] if bundle.actual_df is None else bundle.actual_df.to_dict(orient="records"),
+    }
+
+
+def format_report(bundle: ForecastBundle) -> str:
+    summary = summarize_bundle(bundle)
+    current_close = summary["context"]["current_close"]
+    final_close = summary["forecast"]["predicted_final_close"]
+    highest_high = summary["forecast"]["highest_predicted_high"]
+    lowest_low = summary["forecast"]["lowest_predicted_low"]
+    final_return_pct = summary["forecast"]["predicted_return_pct"]
+    max_upside_pct = summary["forecast"]["max_upside_pct"]
+    max_downside_pct = summary["forecast"]["max_downside_pct"]
+    bias = summary["forecast"]["bias"]
+    path_shape = summary["forecast"]["path_shape"]
+    trend_impression = summary["context"]["trend_impression"]
+    market_condition = summary["context"]["market_condition"]
+    pullback = summary["forecast"]["expected_pullback"]
+    volatility = summary["forecast"]["expected_volatility"]
+    agreement = summary["forecast"]["agreement"]
+    confidence = summary["forecast"]["confidence_note"]
+    bull_case = summary["forecast"]["bull_case"]
+    bear_case = summary["forecast"]["bear_case"]
+    zone = summary["forecast"]["most_likely_zone"]
+    invalidation = summary["forecast"]["invalidation_zone"]
+    watch_for = summary["forecast"]["watch_for"]
+    avoid_if = summary["forecast"]["avoid_if"]
 
     lines = [
         f"Instrument: {bundle.instrument}",
@@ -520,7 +587,15 @@ def main() -> None:
         bundle = bundle_from_prediction_json(args.prediction_json, args.instrument, args.timeframe)
     else:
         bundle = bundle_from_csv(args)
-    print(format_report(bundle))
+    report_text = format_report(bundle)
+    print(report_text)
+    if args.save_json:
+        payload = summarize_bundle(bundle)
+        output_dir = os.path.dirname(args.save_json)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
+        with open(args.save_json, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
 
 
 if __name__ == "__main__":

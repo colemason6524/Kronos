@@ -36,6 +36,7 @@ python scripts/fetch_binance_vision_klines.py \
 
 REPORT_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 REPORT_PATH="${REPORT_DIR}/btc_report_${REPORT_STAMP}.txt"
+REPORT_JSON_PATH="${REPORT_DIR}/btc_report_${REPORT_STAMP}.json"
 
 echo
 echo "Running Kronos live report..."
@@ -46,8 +47,10 @@ python scripts/kronos_text_report.py \
   --live \
   --lookback "$LOOKBACK" \
   --pred-len "$PRED_LEN" \
-  --sample-count "$SAMPLE_COUNT" | tee "$REPORT_PATH"
+  --sample-count "$SAMPLE_COUNT" \
+  --save-json "$REPORT_JSON_PATH" | tee "$REPORT_PATH"
 
 echo
 echo "Saved latest CSV to: ${ROOT_DIR}/${CSV_PATH}"
 echo "Saved report log to: ${ROOT_DIR}/${REPORT_PATH}"
+echo "Saved report JSON to: ${ROOT_DIR}/${REPORT_JSON_PATH}"

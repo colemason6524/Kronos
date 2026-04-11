@@ -254,6 +254,18 @@ You can override defaults inline if needed:
 START_DATE=2026-01-01 LOOKBACK=512 PRED_LEN=24 SAMPLE_COUNT=5 bash scripts/run_btc_morning_report.sh
 ```
 
+Each wrapper run saves:
+- a human-readable text report in `reports/`
+- a machine-readable JSON payload in `reports/`
+
+Later, after refreshing your CSV with realized candles, you can review a saved live call with:
+
+```shell
+python scripts/review_kronos_report.py \
+  --report-json reports/btc_report_20260410T170000Z.json \
+  --csv data/btcusdt_1h_latest.csv
+```
+
 Or summarize a saved Web UI prediction JSON:
 
 ```shell
