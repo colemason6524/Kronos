@@ -426,6 +426,16 @@ def actual_outcome_section(bundle: ForecastBundle) -> list[str]:
     ]
 
 
+def records_with_iso_timestamps(df: Optional[pd.DataFrame]) -> list[dict]:
+    if df is None or df.empty:
+        return []
+
+    safe_df = df.copy()
+    if "timestamps" in safe_df.columns:
+        safe_df["timestamps"] = safe_df["timestamps"].apply(lambda ts: pd.Timestamp(ts).isoformat())
+    return safe_df.to_dict(orient="records")
+
+
 def summarize_bundle(bundle: ForecastBundle) -> dict:
     current_close = float(bundle.context_df["close"].iloc[-1]) if not bundle.context_df.empty else float(bundle.pred_df["close"].iloc[0])
     final_close = float(bundle.pred_df["close"].iloc[-1])
@@ -503,8 +513,8 @@ def summarize_bundle(bundle: ForecastBundle) -> dict:
             "avoid_if": avoid_if,
         },
         "forecast_timestamps": [pd.Timestamp(ts).isoformat() for ts in bundle.pred_df["timestamps"]],
-        "forecast_rows": bundle.pred_df.to_dict(orient="records"),
-        "actual_rows": [] if bundle.actual_df is None else bundle.actual_df.to_dict(orient="records"),
+        "forecast_rows": records_with_iso_timestamps(bundle.pred_df),
+        "actual_rows": records_with_iso_timestamps(bundle.actual_df),
     }
 
 
