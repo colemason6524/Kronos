@@ -266,6 +266,16 @@ python scripts/review_kronos_report.py \
   --csv data/btcusdt_1h_latest.csv
 ```
 
+For an EC2 or cron-based workflow, use [`scripts/run_btc_daily_cycle.sh`](scripts/run_btc_daily_cycle.sh). It:
+- refreshes the latest BTC CSV once
+- reviews the newest fully elapsed prior report that has not already been reviewed
+- writes that reflection to a `_review.txt` file next to the original report JSON
+- generates today’s new live report and saves both `.txt` and `.json`
+
+```shell
+bash scripts/run_btc_daily_cycle.sh
+```
+
 Or summarize a saved Web UI prediction JSON:
 
 ```shell
