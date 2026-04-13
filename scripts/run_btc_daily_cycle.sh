@@ -65,8 +65,11 @@ for path in candidates:
     review_txt = path[:-5] + "_review.txt"
     if os.path.exists(review_txt):
         continue
-    with open(path, "r", encoding="utf-8") as fh:
-        payload = json.load(fh)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            payload = json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        continue
     forecast_timestamps = payload.get("forecast_timestamps", [])
     if not forecast_timestamps:
         continue
