@@ -276,6 +276,25 @@ SYMBOL=SPY bash scripts/run_us_market_report.sh
 SYMBOL=AAPL LOOKBACK=400 PRED_LEN=48 bash scripts/run_us_market_report.sh
 ```
 
+For a repeatable stock/ETF review loop that mirrors the BTC daily cycle, use:
+
+```shell
+bash scripts/run_us_market_daily_cycle.sh
+```
+
+It will:
+- refresh the latest U.S. market CSV for the chosen symbol
+- review the newest fully elapsed prior report that has not already been reviewed
+- write that reflection to a `_review.txt` file next to the original report JSON
+- generate a new live report and save both `.txt` and `.json`
+
+You can switch symbols inline:
+
+```shell
+SYMBOL=QQQ bash scripts/run_us_market_daily_cycle.sh
+SYMBOL=SPY bash scripts/run_us_market_daily_cycle.sh
+```
+
 For a simpler day-to-day BTC workflow, use [`scripts/run_btc_morning_report.sh`](scripts/run_btc_morning_report.sh). It refreshes a stable `data/btcusdt_1h_latest.csv` file, runs a live report, and saves the output to `reports/`.
 
 ```shell
