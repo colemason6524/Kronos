@@ -242,6 +242,40 @@ python scripts/kronos_text_report.py \
 
 Use `--live` when you want the script to forecast beyond the end of your CSV. If you omit it and your file has at least `lookback + pred_len` rows, the script will use the last `pred_len` rows as holdout actuals for comparison.
 
+For U.S. stocks and ETFs, you can pull intraday candles from Yahoo Finance and keep the forecast horizon inside regular market hours:
+
+```shell
+python scripts/fetch_yfinance_klines.py \
+  --symbol QQQ \
+  --interval 5m \
+  --period 60d
+```
+
+```shell
+python scripts/kronos_text_report.py \
+  --csv data/qqq_5m_latest.csv \
+  --instrument QQQ \
+  --timeframe 5m \
+  --market-calendar us_equities \
+  --live \
+  --lookback 400 \
+  --pred-len 78 \
+  --sample-count 3
+```
+
+Or use the one-command wrapper for U.S. market tests:
+
+```shell
+bash scripts/run_us_market_report.sh
+```
+
+You can switch symbols inline:
+
+```shell
+SYMBOL=SPY bash scripts/run_us_market_report.sh
+SYMBOL=AAPL LOOKBACK=400 PRED_LEN=48 bash scripts/run_us_market_report.sh
+```
+
 For a simpler day-to-day BTC workflow, use [`scripts/run_btc_morning_report.sh`](scripts/run_btc_morning_report.sh). It refreshes a stable `data/btcusdt_1h_latest.csv` file, runs a live report, and saves the output to `reports/`.
 
 ```shell

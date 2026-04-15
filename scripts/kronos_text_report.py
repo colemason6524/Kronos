@@ -17,6 +17,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -31,6 +32,7 @@ from model import Kronos, KronosPredictor, KronosTokenizer
 
 DEFAULT_MODEL = "NeoQuasar/Kronos-small"
 DEFAULT_TOKENIZER = "NeoQuasar/Kronos-Tokenizer-base"
+EASTERN_TZ = ZoneInfo("America/New_York")
 
 
 @dataclass
@@ -55,6 +57,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--csv", help="Path to a market CSV to forecast with Kronos.")
     parser.add_argument("--instrument", default="Unknown Instrument", help="Instrument label for the report.")
     parser.add_argument("--timeframe", default="", help="Timeframe label, e.g. 1h or 5m.")
+    parser.add_argument(
+        "--market-calendar",
+        default="continuous",
+        choices=["continuous", "us_equities"],
+        help="Timestamp generation mode for live forecasts.",
+    )
     parser.add_argument("--lookback", type=int, default=400, help="Number of historical candles to use.")
     parser.add_argument("--pred-len", type=int, default=24, help="Number of candles to forecast.")
     parser.add_argument("--start-date", help="Optional start date for an in-sample comparison window.")
@@ -126,15 +134,67 @@ def infer_timeframe(df: pd.DataFrame) -> str:
     return f"{seconds}s"
 
 
-def future_timestamps(history: pd.Series, pred_len: int) -> pd.Series:
+def infer_frequency(history: pd.Series) -> pd.Timedelta:
     if len(history) < 2:
-        start = pd.Timestamp.utcnow().floor("h")
-        freq = pd.Timedelta(hours=1)
-    else:
-        freq = history.diff().dropna().median()
-        if pd.isna(freq) or freq <= pd.Timedelta(0):
-            freq = pd.Timedelta(hours=1)
-        start = history.iloc[-1] + freq
+        return pd.Timedelta(hours=1)
+
+    freq = history.diff().dropna().median()
+    if pd.isna(freq) or freq <= pd.Timedelta(0):
+        return pd.Timedelta(hours=1)
+    return freq
+
+
+def is_us_equities_timestamp(ts: pd.Timestamp) -> bool:
+    weekday = ts.weekday()
+    if weekday >= 5:
+        return False
+    session_open = ts.replace(hour=9, minute=30, second=0, microsecond=0)
+    session_close = ts.replace(hour=16, minute=0, second=0, microsecond=0)
+    return session_open <= ts < session_close
+
+
+def next_us_equities_timestamp(ts: pd.Timestamp, freq: pd.Timedelta) -> pd.Timestamp:
+    candidate = ts + freq
+    while True:
+        if candidate.weekday() >= 5:
+            days_ahead = 7 - candidate.weekday()
+            candidate = (candidate + pd.Timedelta(days=days_ahead)).replace(hour=9, minute=30, second=0, microsecond=0)
+            continue
+        session_open = candidate.replace(hour=9, minute=30, second=0, microsecond=0)
+        session_close = candidate.replace(hour=16, minute=0, second=0, microsecond=0)
+        if candidate < session_open:
+            candidate = session_open
+            continue
+        if candidate >= session_close:
+            candidate = (candidate + pd.Timedelta(days=1)).replace(hour=9, minute=30, second=0, microsecond=0)
+            continue
+        return candidate
+
+
+def future_timestamps(history: pd.Series, pred_len: int, market_calendar: str = "continuous") -> pd.Series:
+    freq = infer_frequency(history)
+
+    if len(history) < 1:
+        start = pd.Timestamp.utcnow().tz_localize("UTC").tz_convert(EASTERN_TZ).tz_localize(None).floor("h")
+        if market_calendar == "us_equities":
+            generated = []
+            current = next_us_equities_timestamp(start - freq, freq)
+            for _ in range(pred_len):
+                generated.append(current)
+                current = next_us_equities_timestamp(current, freq)
+            return pd.Series(generated, name="timestamps")
+        return pd.Series(pd.date_range(start=start, periods=pred_len, freq=freq), name="timestamps")
+
+    last_ts = pd.Timestamp(history.iloc[-1]).tz_localize(None)
+    if market_calendar == "us_equities":
+        generated = []
+        current = next_us_equities_timestamp(last_ts, freq)
+        for _ in range(pred_len):
+            generated.append(current)
+            current = next_us_equities_timestamp(current, freq)
+        return pd.Series(generated, name="timestamps")
+
+    start = last_ts + freq
     return pd.Series(pd.date_range(start=start, periods=pred_len, freq=freq), name="timestamps")
 
 
@@ -152,6 +212,7 @@ def select_window(
     pred_len: int,
     start_date: Optional[str],
     live: bool,
+    market_calendar: str,
 ) -> tuple[pd.DataFrame, pd.Series, pd.Series, Optional[pd.DataFrame]]:
     if start_date:
         start_ts = pd.to_datetime(start_date)
@@ -170,7 +231,11 @@ def select_window(
             raise ValueError(f"Need at least {lookback} rows, found {len(df)}.")
 
         context_df = df.iloc[-lookback:].copy()
-        y_timestamp = future_timestamps(context_df["timestamps"].reset_index(drop=True), pred_len)
+        y_timestamp = future_timestamps(
+            context_df["timestamps"].reset_index(drop=True),
+            pred_len,
+            market_calendar=market_calendar,
+        )
         return context_df, context_df["timestamps"].reset_index(drop=True), y_timestamp, None
 
     if len(df) >= lookback + pred_len:
@@ -183,7 +248,11 @@ def select_window(
         raise ValueError(f"Need at least {lookback} rows, found {len(df)}.")
 
     context_df = df.iloc[-lookback:].copy()
-    y_timestamp = future_timestamps(context_df["timestamps"].reset_index(drop=True), pred_len)
+    y_timestamp = future_timestamps(
+        context_df["timestamps"].reset_index(drop=True),
+        pred_len,
+        market_calendar=market_calendar,
+    )
     return context_df, context_df["timestamps"].reset_index(drop=True), y_timestamp, None
 
 
@@ -196,6 +265,7 @@ def bundle_from_csv(args: argparse.Namespace) -> ForecastBundle:
         args.pred_len,
         args.start_date,
         args.live,
+        args.market_calendar,
     )
 
     feature_cols = ["open", "high", "low", "close"]
